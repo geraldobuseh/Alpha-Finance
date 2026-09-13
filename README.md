@@ -198,9 +198,20 @@ See [migration and test commands](db/README.md) and the
 positions and snapshots are rebuildable projections. The optional PQL-011
 persistence target implements repository access and ledger reconstruction.
 
-**v0.1 Bootstrap**: Minimal C++20 executable + GoogleTest integration
+Paper simulations can now use [the SPY buy-and-hold control](docs/bets/PQL-020.md).
+`PaperPortfolioPair::create` starts both accounts with $1,000 and completes the
+control's fractional SPY purchase using configured commission and slippage. The
+control stays held while paper orders execute independently. This is an in-memory,
+price-based benchmark; dividends and persistent pair registration are not included.
 
-No financial domain logic yet. See PQL-003 for portfolio tracking.
+The [weekly DCA strategy](docs/bets/PQL-021.md) proposes a $25 total-budget SPY buy
+each supplied UTC Monday, using existing cash and configured trading costs. It can
+run against the paired buy-and-hold control without adding deposits.
+
+The [20-day Momentum strategy](docs/bets/PQL-022.md) ranks a configured universe
+using21 aligned prior-session closes and rebalances into the top two each UTC
+Monday. Use `executePaperBatch` for its ordered sells and buys: a rejected leg
+rolls back the entire rebalance. Synthetic fixtures verify ranking and weekly costs.
 
 ---
 
