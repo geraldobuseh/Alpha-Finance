@@ -75,8 +75,8 @@ TEST(HistoricalReplay, MillisecondCutoffIsInclusiveAndMatchesDirectPrefixReplay)
     const auto before = HistoricalReplay::at(
         pid(), money(1000), events, Timestamp{tick.value() - std::chrono::milliseconds{1}});
     const auto exact = HistoricalReplay::at(pid(), money(1000), events, tick);
-    const auto after = HistoricalReplay::at(
-        pid(), money(1000), events, Timestamp{tick.value() + std::chrono::milliseconds{1}});
+    const auto after = HistoricalReplay::at(pid(), money(1000), events,
+                                            Timestamp{tick.value() + std::chrono::milliseconds{1}});
     const auto first_prefix = Portfolio::replay(pid(), money(1000), {events[0]});
     const auto second_prefix = Portfolio::replay(pid(), money(1000), {events[0], events[1]});
     ASSERT_TRUE(first_prefix);
