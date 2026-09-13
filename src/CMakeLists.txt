@@ -11,6 +11,8 @@ add_library(pql_domain STATIC
 )
 target_include_directories(pql_domain PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_compile_features(pql_domain PUBLIC cxx_std_20)
+add_library(pql_execution STATIC execution/fake_broker.cpp)
+target_link_libraries(pql_execution PUBLIC pql_domain)
 add_library(pql_market_data STATIC market_data/fake_market_data_provider.cpp)
 target_link_libraries(pql_market_data PUBLIC pql_domain)
 target_compile_features(pql_market_data PUBLIC cxx_std_20)

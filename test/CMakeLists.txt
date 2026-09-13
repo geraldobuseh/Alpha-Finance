@@ -64,6 +64,15 @@ add_executable(pql_fake_market_data_tests test_fake_market_data.cpp)
 target_link_libraries(pql_fake_market_data_tests PRIVATE pql_market_data gtest_main)
 add_test(NAME FakeMarketDataTest COMMAND pql_fake_market_data_tests)
 
+# Interface contract is checked at compile time; no concrete broker or I/O.
+add_executable(pql_broker_tests test_broker.cpp)
+target_link_libraries(pql_broker_tests PRIVATE pql_domain)
+add_test(NAME BrokerContractTest COMMAND pql_broker_tests)
+
+add_executable(pql_fake_broker_tests test_fake_broker.cpp)
+target_link_libraries(pql_fake_broker_tests PRIVATE pql_execution gtest_main)
+add_test(NAME FakeBrokerTest COMMAND pql_fake_broker_tests)
+
 if(PQL_BUILD_POSTGRES_TESTS)
     add_executable(pql_postgres_tests test_postgres.cpp)
     target_link_libraries(pql_postgres_tests PRIVATE pql_persistence gtest_main libpqxx::pqxx)
