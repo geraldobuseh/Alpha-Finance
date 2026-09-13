@@ -17,7 +17,7 @@ target_link_libraries(pql_execution PUBLIC pql_domain)
 add_library(pql_simulation STATIC strategy/spy_buy_and_hold.cpp strategy/dollar_cost_averaging.cpp
     strategy/momentum.cpp
     strategy/mean_reversion.cpp
-    simulation/paper_portfolio_pair.cpp)
+    simulation/paper_portfolio_pair.cpp simulation/historical_replay.cpp)
 target_link_libraries(pql_simulation PUBLIC pql_execution)
 add_library(pql_market_data STATIC market_data/fake_market_data_provider.cpp)
 target_link_libraries(pql_market_data PUBLIC pql_domain)

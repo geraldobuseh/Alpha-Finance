@@ -97,6 +97,10 @@ add_executable(pql_mean_reversion_tests test_mean_reversion.cpp)
 target_link_libraries(pql_mean_reversion_tests PRIVATE pql_simulation gtest_main)
 add_test(NAME MeanReversionTest COMMAND pql_mean_reversion_tests)
 
+add_executable(pql_historical_replay_tests test_historical_replay.cpp)
+target_link_libraries(pql_historical_replay_tests PRIVATE pql_simulation gtest_main)
+add_test(NAME HistoricalReplayTest COMMAND pql_historical_replay_tests)
+
 if(PQL_BUILD_POSTGRES_TESTS)
     add_executable(pql_postgres_tests test_postgres.cpp test_daily_valuation_postgres.cpp)
     target_link_libraries(pql_postgres_tests PRIVATE pql_persistence gtest_main libpqxx::pqxx)
