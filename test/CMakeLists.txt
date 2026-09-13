@@ -73,6 +73,10 @@ add_executable(pql_fake_broker_tests test_fake_broker.cpp)
 target_link_libraries(pql_fake_broker_tests PRIVATE pql_execution gtest_main)
 add_test(NAME FakeBrokerTest COMMAND pql_fake_broker_tests)
 
+add_executable(pql_strategy_tests test_strategy.cpp)
+target_link_libraries(pql_strategy_tests PRIVATE pql_execution gtest_main)
+add_test(NAME StrategyTest COMMAND pql_strategy_tests)
+
 if(PQL_BUILD_POSTGRES_TESTS)
     add_executable(pql_postgres_tests test_postgres.cpp)
     target_link_libraries(pql_postgres_tests PRIVATE pql_persistence gtest_main libpqxx::pqxx)
