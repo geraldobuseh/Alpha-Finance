@@ -35,18 +35,8 @@ Execution FakeBroker::execute(const Order& order, const MarketState& market) {
             return reject(ExecutionRejection::InsufficientShares);
         }
     }
-    auto execution_price = std::optional<Price>{market.price()};
-    if (costs_.slippageBasisPoints() > 0.0) {
-        const double quote = market.price().value();
-        const double delta = quote * (costs_.slippageBasisPoints() / 10000.0);
-        const double adjusted = order.side() == OrderSide::Buy ? quote + delta : quote - delta;
-        execution_price = Price::create(adjusted);
-        // Never silently turn a positive configured cost into zero friction.
-        if (delta <= 0.0 || !execution_price ||
-            (order.side() == OrderSide::Buy ? adjusted <= quote : adjusted >= quote)) {
-            return reject(ExecutionRejection::InvalidArithmetic);
-        }
-    }
+    const auto execution_price = costs_.executionPrice(market.price(), order.side());
+    if (!execution_price) return reject(ExecutionRejection::InvalidArithmetic);
     const auto commission = costs_.commission();
     const auto notional = Money::create(order.quantity().value() * execution_price->value());
     if (!notional || notional->value() <= 0.0) return reject(ExecutionRejection::InvalidArithmetic);

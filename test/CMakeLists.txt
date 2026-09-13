@@ -77,6 +77,14 @@ add_executable(pql_strategy_tests test_strategy.cpp)
 target_link_libraries(pql_strategy_tests PRIVATE pql_execution gtest_main)
 add_test(NAME StrategyTest COMMAND pql_strategy_tests)
 
+add_executable(pql_spy_benchmark_tests test_spy_benchmark.cpp)
+target_link_libraries(pql_spy_benchmark_tests PRIVATE pql_simulation gtest_main)
+add_test(NAME SpyBenchmarkTest COMMAND pql_spy_benchmark_tests)
+
+add_executable(pql_dca_tests test_dollar_cost_averaging.cpp)
+target_link_libraries(pql_dca_tests PRIVATE pql_simulation gtest_main)
+add_test(NAME DollarCostAveragingTest COMMAND pql_dca_tests)
+
 if(PQL_BUILD_POSTGRES_TESTS)
     add_executable(pql_postgres_tests test_postgres.cpp)
     target_link_libraries(pql_postgres_tests PRIVATE pql_persistence gtest_main libpqxx::pqxx)

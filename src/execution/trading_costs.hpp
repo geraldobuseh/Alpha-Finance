@@ -3,7 +3,7 @@
 #include <cmath>
 #include <stdexcept>
 
-#include "domain/financial_types.hpp"
+#include "domain/order.hpp"
 
 namespace pql {
 
@@ -21,6 +21,21 @@ class TradingCosts {
     }
     [[nodiscard]] Money commission() const noexcept { return commission_; }
     [[nodiscard]] double slippageBasisPoints() const noexcept { return slippage_basis_points_; }
+
+    // Shared quote-to-fill estimate for proposal sizing and authoritative execution.
+    [[nodiscard]] std::optional<Price> executionPrice(Price reference,
+                                                      OrderSide side) const noexcept {
+        if (side != OrderSide::Buy && side != OrderSide::Sell) return std::nullopt;
+        if (slippage_basis_points_ == 0.0) return reference;
+        const double quote = reference.value();
+        const double delta = quote * (slippage_basis_points_ / 10000.0);
+        const double adjusted = side == OrderSide::Buy ? quote + delta : quote - delta;
+        const auto result = Price::create(adjusted);
+        if (delta <= 0.0 || !result ||
+            (side == OrderSide::Buy ? adjusted <= quote : adjusted >= quote))
+            return std::nullopt;
+        return result;
+    }
 
    private:
     Money commission_;
