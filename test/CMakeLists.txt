@@ -89,6 +89,10 @@ add_executable(pql_momentum_tests test_momentum.cpp)
 target_link_libraries(pql_momentum_tests PRIVATE pql_simulation gtest_main)
 add_test(NAME MomentumTest COMMAND pql_momentum_tests)
 
+add_executable(pql_mean_reversion_tests test_mean_reversion.cpp)
+target_link_libraries(pql_mean_reversion_tests PRIVATE pql_simulation gtest_main)
+add_test(NAME MeanReversionTest COMMAND pql_mean_reversion_tests)
+
 if(PQL_BUILD_POSTGRES_TESTS)
     add_executable(pql_postgres_tests test_postgres.cpp)
     target_link_libraries(pql_postgres_tests PRIVATE pql_persistence gtest_main libpqxx::pqxx)
