@@ -4,6 +4,7 @@
 #include "execution/broker.hpp"
 #include "execution/execution.hpp"
 #include "execution/market_state.hpp"
+#include "execution/trading_costs.hpp"
 
 namespace pql {
 
@@ -11,13 +12,14 @@ namespace pql {
 // Strategies receive a PortfolioSnapshot, never this portfolio reference.
 class FakeBroker final : public Broker {
    public:
-    // Fixed single-currency fee per full fill; negative configuration throws.
+    // Compatibility: fixed commission per full fill, zero slippage.
     FakeBroker(Portfolio& portfolio, Money fee);
+    FakeBroker(Portfolio& portfolio, TradingCosts costs);
     [[nodiscard]] Execution execute(const Order& order, const MarketState& market) override;
 
    private:
     Portfolio& portfolio_;
-    Money fee_;
+    TradingCosts costs_;
 };
 
 }  // namespace pql

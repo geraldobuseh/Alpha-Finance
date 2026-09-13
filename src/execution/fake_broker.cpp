@@ -1,13 +1,14 @@
 #include "execution/fake_broker.hpp"
 
 #include <algorithm>
-#include <stdexcept>
 
 namespace pql {
 
-FakeBroker::FakeBroker(Portfolio& portfolio, Money fee) : portfolio_(portfolio), fee_(fee) {
-    if (fee.value() < 0.0) throw std::invalid_argument("Broker fee must be nonnegative");
-}
+FakeBroker::FakeBroker(Portfolio& portfolio, Money fee)
+    : FakeBroker(portfolio, TradingCosts{fee, 0.0}) {}
+
+FakeBroker::FakeBroker(Portfolio& portfolio, TradingCosts costs)
+    : portfolio_(portfolio), costs_(costs) {}
 
 Execution FakeBroker::execute(const Order& order, const MarketState& market) {
     const auto reject = [&](ExecutionRejection reason) noexcept {
@@ -34,16 +35,29 @@ Execution FakeBroker::execute(const Order& order, const MarketState& market) {
             return reject(ExecutionRejection::InsufficientShares);
         }
     }
-    const auto notional = Money::create(order.quantity().value() * market.price().value());
+    auto execution_price = std::optional<Price>{market.price()};
+    if (costs_.slippageBasisPoints() > 0.0) {
+        const double quote = market.price().value();
+        const double delta = quote * (costs_.slippageBasisPoints() / 10000.0);
+        const double adjusted = order.side() == OrderSide::Buy ? quote + delta : quote - delta;
+        execution_price = Price::create(adjusted);
+        // Never silently turn a positive configured cost into zero friction.
+        if (delta <= 0.0 || !execution_price ||
+            (order.side() == OrderSide::Buy ? adjusted <= quote : adjusted >= quote)) {
+            return reject(ExecutionRejection::InvalidArithmetic);
+        }
+    }
+    const auto commission = costs_.commission();
+    const auto notional = Money::create(order.quantity().value() * execution_price->value());
     if (!notional || notional->value() <= 0.0) return reject(ExecutionRejection::InvalidArithmetic);
-    const double amount = order.side() == OrderSide::Buy ? notional->value() + fee_.value()
-                                                         : fee_.value() - notional->value();
+    const double amount = order.side() == OrderSide::Buy ? notional->value() + commission.value()
+                                                         : commission.value() - notional->value();
     if (!Money::create(amount)) return reject(ExecutionRejection::InvalidArithmetic);
     if (amount > portfolio_.cashBalance().value())
         return reject(ExecutionRejection::InsufficientCash);
 
-    const auto trade = Trade::create(order, market.price(), market.timestamp());
-    const auto transaction = Transaction::create(portfolio_.id(), *trade, fee_);
+    const auto trade = Trade::create(order, *execution_price, market.timestamp());
+    const auto transaction = Transaction::create(portfolio_.id(), *trade, commission);
     // All allocations (including the ledger's staged update) happen before commit.
     // Returning this scalar receipt cannot throw, even when NRVO is disabled.
     const auto result = Execution::accepted(*transaction);

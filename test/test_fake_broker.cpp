@@ -215,4 +215,122 @@ TEST(FakeBroker, UnrepresentableAmountsAndLedgerNumericFailuresRemainAtomic) {
     expectRejected(tiny_fee, ordinary, order(1), market(), ExecutionRejection::PortfolioRejected);
 }
 
+TEST(FakeBroker, TradingCostsRejectInvalidConfiguration) {
+    EXPECT_THROW((TradingCosts{money(-1), 0}), std::invalid_argument);
+    for (double bps :
+         {-1.0, 10000.0, 10001.0, std::numeric_limits<double>::infinity(),
+          -std::numeric_limits<double>::infinity(), std::numeric_limits<double>::quiet_NaN()}) {
+        EXPECT_THROW((TradingCosts{money(1), bps}), std::invalid_argument);
+    }
+    EXPECT_NO_THROW((TradingCosts{money(0), 0}));
+    EXPECT_NO_THROW((TradingCosts{money(2), 9999}));
+    const TradingCosts costs{money(1), 5};
+    EXPECT_EQ(costs.commission(), money(1));
+    EXPECT_DOUBLE_EQ(costs.slippageBasisPoints(), 5);
+}
+
+TEST(FakeBroker, FiveBasisPointsMatchesExampleAndCommissionIsNotSlippage) {
+    auto portfolio = funded();
+    FakeBroker broker{portfolio, TradingCosts{money(1), 5}};
+    const auto quote = market();
+    const auto buy = broker.execute(order(1), quote);
+    ASSERT_TRUE(buy.isFilled());
+    EXPECT_DOUBLE_EQ(buy.fill()->price.value(), 100.05);
+    EXPECT_EQ(buy.fill()->fees, money(1));
+    EXPECT_DOUBLE_EQ(portfolio.cashBalance().value(), 798.90);
+    EXPECT_DOUBLE_EQ(portfolio.positions()[0].average_cost()->value(), 100.55);
+    const auto sale = broker.execute(order(2, OrderSide::Sell), quote);
+    ASSERT_TRUE(sale.isFilled());
+    EXPECT_DOUBLE_EQ(sale.fill()->price.value(), 99.95);
+    EXPECT_EQ(sale.fill()->fees, money(1));
+    EXPECT_DOUBLE_EQ(portfolio.cashBalance().value(), 997.80);
+    EXPECT_NEAR(portfolio.positions()[0].realized_pnl().value(), -2.20, 1e-12);
+    EXPECT_EQ(quote.price(), price(100));
+    EXPECT_EQ(portfolio.transactionHistory()[0].price(), buy.fill()->price);
+    EXPECT_EQ(portfolio.transactionHistory()[1].price(), sale.fill()->price);
+    const auto replay =
+        Portfolio::replay(portfolio.id(), portfolio.startingCash(), portfolio.transactionHistory());
+    ASSERT_TRUE(replay);
+    EXPECT_EQ(replay->snapshot(), portfolio.snapshot());
+}
+
+TEST(FakeBroker, CostsAreIndependentConfigurableAndDeterministic) {
+    for (double commission : {0.0, 2.0, 3.0}) {
+        for (double bps : {0.0, 100.0}) {
+            auto portfolio = funded();
+            auto duplicate = funded();
+            FakeBroker broker{portfolio, TradingCosts{money(commission), bps}};
+            FakeBroker other{duplicate, TradingCosts{money(commission), bps}};
+            for (Broker* target : {static_cast<Broker*>(&broker), static_cast<Broker*>(&other)}) {
+                ASSERT_TRUE(target->execute(order(1), market()).isFilled());
+                ASSERT_TRUE(target->execute(order(2, OrderSide::Sell), market()).isFilled());
+            }
+            const double expected_loss = (bps == 0 ? 0 : 4) + 2 * commission;
+            EXPECT_EQ(portfolio.cashBalance(), money(1000 - expected_loss));
+            EXPECT_EQ(portfolio.positions()[0].realized_pnl(), money(-expected_loss));
+            EXPECT_EQ(portfolio.snapshot(), duplicate.snapshot());
+        }
+    }
+    auto legacy = funded();
+    auto configured = funded();
+    FakeBroker old{legacy, money(2)};
+    FakeBroker current{configured, TradingCosts{money(2), 0}};
+    ASSERT_TRUE(old.execute(order(1), market()).isFilled());
+    ASSERT_TRUE(current.execute(order(1), market()).isFilled());
+    EXPECT_EQ(legacy.snapshot(), configured.snapshot());
+}
+
+TEST(FakeBroker, SlippedPriceAndCommissionBothCountForAffordability) {
+    for (double cash : {200.0, 202.0, 203.0}) {
+        auto portfolio = funded(cash);
+        FakeBroker broker{portfolio, TradingCosts{money(2), 100}};
+        expectRejected(broker, portfolio, order(1), market(), ExecutionRejection::InsufficientCash);
+    }
+    auto portfolio = funded(204);
+    FakeBroker broker{portfolio, TradingCosts{money(2), 100}};
+    ASSERT_TRUE(broker.execute(order(1), market()).isFilled());
+    EXPECT_EQ(portfolio.cashBalance(), money(0));
+    EXPECT_EQ(portfolio.positions()[0].average_cost(), price(102));
+    expectRejected(broker, portfolio, order(2, OrderSide::Sell, 3), market(),
+                   ExecutionRejection::InsufficientShares);
+    expectRejected(broker, portfolio, order(1), market(), ExecutionRejection::DuplicateOrder);
+    EXPECT_TRUE(broker.execute(order(2, OrderSide::Sell), market()).isFilled());
+}
+
+TEST(FakeBroker, AdverseSellSlippageCanMakeSaleCommissionUnaffordable) {
+    auto portfolio = funded(100);
+    FakeBroker buy{portfolio, money(0)};
+    ASSERT_TRUE(buy.execute(order(1, OrderSide::Buy, 1), market()).isFilled());
+    FakeBroker sell{portfolio, TradingCosts{money(100), 100}};
+    expectRejected(sell, portfolio, order(2, OrderSide::Sell, 1), market(),
+                   ExecutionRejection::InsufficientCash);
+}
+
+TEST(FakeBroker, RejectsSlippageOverflowUnderflowAndLostAdjustments) {
+    auto portfolio = funded(std::numeric_limits<double>::max());
+    FakeBroker broker{portfolio, TradingCosts{money(0), 100}};
+    expectRejected(broker, portfolio, order(1, OrderSide::Buy, 1),
+                   market(std::numeric_limits<double>::max()),
+                   ExecutionRejection::InvalidArithmetic);
+    expectRejected(broker, portfolio, order(1, OrderSide::Buy, 1),
+                   market(std::numeric_limits<double>::denorm_min()),
+                   ExecutionRejection::InvalidArithmetic);
+    for (double bps : {std::numeric_limits<double>::denorm_min(), 1e-15}) {
+        auto ordinary = funded();
+        FakeBroker tiny{ordinary, TradingCosts{money(0), bps}};
+        expectRejected(tiny, ordinary, order(1), market(), ExecutionRejection::InvalidArithmetic);
+        FakeBroker buy{ordinary, money(0)};
+        ASSERT_TRUE(buy.execute(order(1), market()).isFilled());
+        expectRejected(tiny, ordinary, order(2, OrderSide::Sell), market(),
+                       ExecutionRejection::InvalidArithmetic);
+    }
+    auto ordinary = funded();
+    FakeBroker buy{ordinary, money(0)};
+    ASSERT_TRUE(buy.execute(order(1), market()).isFilled());
+    FakeBroker near_total{ordinary, TradingCosts{money(0), 9999}};
+    expectRejected(near_total, ordinary, order(2, OrderSide::Sell),
+                   market(std::numeric_limits<double>::denorm_min()),
+                   ExecutionRejection::InvalidArithmetic);
+}
+
 }  // namespace
