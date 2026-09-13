@@ -21,6 +21,10 @@ class PaperPortfolioPair {
     [[nodiscard]] PortfolioState benchmarkState() const { return benchmark_.snapshot(); }
     [[nodiscard]] Timestamp startTime() const noexcept { return start_; }
     [[nodiscard]] Execution executePaper(const Order& order, const MarketState& market);
+    // All-or-nothing synchronous batch. nullopt rejects with no financial changes;
+    // successful receipts are published only after every order has filled.
+    [[nodiscard]] std::optional<std::vector<Execution>> executePaperBatch(
+        const std::vector<Order>& orders, const MarketState& market);
 
    private:
     PaperPortfolioPair(const Portfolio& paper, const Portfolio& benchmark, Timestamp start,

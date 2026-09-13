@@ -15,7 +15,8 @@ Execution FakeBroker::execute(const Order& order, const MarketState& market) {
         return Execution::rejected(portfolio_.id(), order.id(), reason);
     };
     // Order/Symbol factories already exclude zero quantities and malformed symbols.
-    if (order.symbol() != market.symbol()) return reject(ExecutionRejection::UnknownSymbol);
+    const auto* quote = market.asset(order.symbol());
+    if (!quote) return reject(ExecutionRejection::UnknownSymbol);
     const auto& history = portfolio_.transactionHistory();
     if (market.timestamp() < order.timestamp() ||
         (!history.empty() && market.timestamp() < history.back().timestamp())) {
@@ -35,7 +36,7 @@ Execution FakeBroker::execute(const Order& order, const MarketState& market) {
             return reject(ExecutionRejection::InsufficientShares);
         }
     }
-    const auto execution_price = costs_.executionPrice(market.price(), order.side());
+    const auto execution_price = costs_.executionPrice(quote->price, order.side());
     if (!execution_price) return reject(ExecutionRejection::InvalidArithmetic);
     const auto commission = costs_.commission();
     const auto notional = Money::create(order.quantity().value() * execution_price->value());

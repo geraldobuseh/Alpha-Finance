@@ -208,6 +208,11 @@ The [weekly DCA strategy](docs/bets/PQL-021.md) proposes a $25 total-budget SPY 
 each supplied UTC Monday, using existing cash and configured trading costs. It can
 run against the paired buy-and-hold control without adding deposits.
 
+The [20-day Momentum strategy](docs/bets/PQL-022.md) ranks a configured universe
+using21 aligned prior-session closes and rebalances into the top two each UTC
+Monday. Use `executePaperBatch` for its ordered sells and buys: a rejected leg
+rolls back the entire rebalance. Synthetic fixtures verify ranking and weekly costs.
+
 ---
 
 For questions or issues, see `.codex/AGENTS.md` for project governance.

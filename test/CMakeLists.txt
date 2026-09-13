@@ -85,6 +85,10 @@ add_executable(pql_dca_tests test_dollar_cost_averaging.cpp)
 target_link_libraries(pql_dca_tests PRIVATE pql_simulation gtest_main)
 add_test(NAME DollarCostAveragingTest COMMAND pql_dca_tests)
 
+add_executable(pql_momentum_tests test_momentum.cpp)
+target_link_libraries(pql_momentum_tests PRIVATE pql_simulation gtest_main)
+add_test(NAME MomentumTest COMMAND pql_momentum_tests)
+
 if(PQL_BUILD_POSTGRES_TESTS)
     add_executable(pql_postgres_tests test_postgres.cpp)
     target_link_libraries(pql_postgres_tests PRIVATE pql_persistence gtest_main libpqxx::pqxx)
