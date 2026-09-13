@@ -186,3 +186,18 @@ Once results exist, preserve run configuration (version, parameters, universe, c
 Positions and snapshots are disposable projections, never the ledger. The writer must derive them from starting cash, transactions ordered by replay_sequence, and explicit valuation prices. It must verify cutoff/time consistency, that NULL snapshot cutoff really denotes initial state, and that average cost/realized P&L/cash match replay. Benchmark comparisons must use aligned capital, dates, adjustment, fees and dividend assumptions. These cross-row calculations and permissions are not implemented by this schema ticket.
 
 Example with zero fees: start $1,000; buy 2 AAPL at $100 (cash $800); sell 1 at $120 (cash $920, 1 share, $20 realized). Mark the remaining share at $120: market value $120, total $1,040, unrealized $20. Transaction sequence defines replay order even if both fills share a timestamp. A stored balance alone cannot explain or reproduce those results.
+
+## Daily valuations (migration 003)
+
+`portfolio_snapshots` additionally stores an optional daily session, price source,
+prior snapshot reference, and nullable fractional daily/cumulative returns. Legacy
+rows remain unchanged and are not presented as completed daily valuations. A unique
+partial index allows at most one daily record per portfolio/session. The predecessor
+foreign key remains inside the same portfolio and must precede the current cutoff.
+
+`daily_valuation_marks` stores each used raw close with a symbol foreign key and
+parent snapshot identity. The repository calculates before writing and recomputes
+on read; it rejects conflicting retries, historical insertions and late ledger events.
+These writer invariants do not authorize direct SQL modification of financial data.
+See [daily valuation contracts](../docs/daily-valuation.md) for return definitions,
+zero denominators, source/mark assumptions and decimal-versus-binary total semantics.

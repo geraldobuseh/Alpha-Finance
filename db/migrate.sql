@@ -24,4 +24,12 @@ SELECT EXISTS (SELECT 1 FROM public.schema_migrations WHERE version = 2) AS appl
     INSERT INTO public.schema_migrations(version, description)
     VALUES (2, 'PQL-014 daily market-data session identity');
 \endif
+SELECT EXISTS (SELECT 1 FROM public.schema_migrations WHERE version = 3) AS applied \gset
+\if :applied
+    \echo 'Migration 003 already applied'
+\else
+    \ir migrations/003_daily_valuations.sql
+    INSERT INTO public.schema_migrations(version, description)
+    VALUES (3, 'PQL-024 daily valuation returns and closing-price provenance');
+\endif
 COMMIT;

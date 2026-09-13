@@ -5,6 +5,7 @@
 #include <string>
 #include <vector>
 
+#include "analytics/daily_valuation.hpp"
 #include "domain/market_data.hpp"
 #include "domain/portfolio.hpp"
 
@@ -79,6 +80,21 @@ class PortfolioRepository {
     [[nodiscard]] virtual std::optional<StoredPortfolio> portfolio(PortfolioId id) = 0;
     // Metadata only: starting cash and financial history cannot be edited.
     virtual void renamePortfolio(PortfolioId id, const std::string& name) = 0;
+};
+
+class ValuationRepository {
+   public:
+    virtual ~ValuationRepository() = default;
+    // Calculates from the authoritative ledger before writing. Caller supplies
+    // the immediately preceding exchange session; null is valid only at inception.
+    // Same-input retries are no-ops, conflicting revisions/backfills reject.
+    // Part of the owning unit of work: commit is required for durability.
+    [[nodiscard]] virtual DailyValuation valueDaily(PortfolioId id, Date session, Timestamp close,
+                                                    const std::string& source,
+                                                    const std::vector<PriceBar>& bars,
+                                                    std::optional<Date> previous_session) = 0;
+    [[nodiscard]] virtual std::optional<DailyValuation> dailyValuation(PortfolioId id,
+                                                                       Date session) = 0;
 };
 
 }  // namespace pql::persistence

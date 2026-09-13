@@ -89,8 +89,12 @@ add_executable(pql_momentum_tests test_momentum.cpp)
 target_link_libraries(pql_momentum_tests PRIVATE pql_simulation gtest_main)
 add_test(NAME MomentumTest COMMAND pql_momentum_tests)
 
+add_executable(pql_daily_valuation_tests test_daily_valuation.cpp)
+target_link_libraries(pql_daily_valuation_tests PRIVATE pql_domain gtest_main)
+add_test(NAME DailyValuationTest COMMAND pql_daily_valuation_tests)
+
 if(PQL_BUILD_POSTGRES_TESTS)
-    add_executable(pql_postgres_tests test_postgres.cpp)
+    add_executable(pql_postgres_tests test_postgres.cpp test_daily_valuation_postgres.cpp)
     target_link_libraries(pql_postgres_tests PRIVATE pql_persistence gtest_main libpqxx::pqxx)
     add_test(NAME PostgresIntegrationTest COMMAND pql_postgres_tests)
     set_tests_properties(PostgresIntegrationTest PROPERTIES LABELS integration TIMEOUT 60)
