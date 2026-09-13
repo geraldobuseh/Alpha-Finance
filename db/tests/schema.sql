@@ -27,6 +27,7 @@ INSERT INTO positions VALUES (101,101,1,100,20,'2026-01-01',2);
 INSERT INTO portfolio_snapshots(portfolio_id,as_of,ledger_sequence,cash,market_value)
 VALUES (101,'2026-01-01',2,920,120),(102,'2026-01-01',NULL,1000,0);
 INSERT INTO benchmark_snapshots VALUES (101,'2026-01-01',102,'SPY','2026-01-01',1000,1000,'raw');
+INSERT INTO daily_valuation_marks VALUES (101,'2026-01-01','AAPL',120);
 
 -- Exercise NOT NULL for every required, non-generated column using valid rows.
 DO $$
@@ -119,5 +120,20 @@ END;
 $$;
 -- A closed projection retains realized P&L and has no average cost.
 UPDATE positions SET quantity=0,average_cost=NULL,realized_pnl=-10;
+-- Daily metadata is opt-in for legacy snapshots; partial or invalid metadata rejects.
+SELECT pg_temp.rejects($s$UPDATE portfolio_snapshots SET session_date='2026-01-01' WHERE portfolio_id=101$s$,'23514');
+UPDATE portfolio_snapshots SET session_date='2026-01-01',price_source='synthetic',cumulative_return=0.04
+    WHERE portfolio_id=101;
+SELECT pg_temp.rejects($s$UPDATE portfolio_snapshots SET daily_return=0 WHERE portfolio_id=101$s$,'23514');
+SELECT pg_temp.rejects($s$UPDATE portfolio_snapshots SET cumulative_return=-1.01 WHERE portfolio_id=101$s$,'23514');
+SELECT pg_temp.rejects($s$UPDATE portfolio_snapshots SET cumulative_return='NaN' WHERE portfolio_id=101$s$,'23514');
+SELECT pg_temp.rejects($s$UPDATE portfolio_snapshots SET price_source=' ' WHERE portfolio_id=101$s$,'23514');
+SELECT pg_temp.rejects($s$UPDATE portfolio_snapshots SET session_date='2026-01-02' WHERE portfolio_id=101$s$,'23514');
+SELECT pg_temp.rejects($s$UPDATE portfolio_snapshots SET previous_as_of=as_of WHERE portfolio_id=101$s$,'23514');
+SELECT pg_temp.rejects($s$UPDATE portfolio_snapshots SET previous_as_of='2025-12-31' WHERE portfolio_id=101$s$,'23503');
+SELECT pg_temp.rejects($s$INSERT INTO portfolio_snapshots(portfolio_id,as_of,cash,market_value,session_date,price_source)
+    VALUES(101,'2026-01-01 20:00Z',1000,0,'2026-01-01','synthetic')$s$,'23505');
+SELECT pg_temp.rejects($s$UPDATE daily_valuation_marks SET close=0$s$,'23514');
+SELECT pg_temp.rejects($s$UPDATE daily_valuation_marks SET symbol='UNKNOWN'$s$,'23503');
 ROLLBACK;
 \echo 'Schema constraint tests passed; fixtures rolled back'

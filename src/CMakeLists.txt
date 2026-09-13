@@ -8,6 +8,7 @@ add_library(pql_domain STATIC
     domain/position.cpp
     domain/portfolio.cpp
     domain/transaction.cpp
+    analytics/daily_valuation.cpp
 )
 target_include_directories(pql_domain PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_compile_features(pql_domain PUBLIC cxx_std_20)
@@ -15,7 +16,8 @@ add_library(pql_execution STATIC execution/fake_broker.cpp)
 target_link_libraries(pql_execution PUBLIC pql_domain)
 add_library(pql_simulation STATIC strategy/spy_buy_and_hold.cpp strategy/dollar_cost_averaging.cpp
     strategy/momentum.cpp
-    simulation/paper_portfolio_pair.cpp)
+    strategy/mean_reversion.cpp
+    simulation/paper_portfolio_pair.cpp simulation/historical_replay.cpp)
 target_link_libraries(pql_simulation PUBLIC pql_execution)
 add_library(pql_market_data STATIC market_data/fake_market_data_provider.cpp)
 target_link_libraries(pql_market_data PUBLIC pql_domain)

@@ -1,5 +1,6 @@
 #include "persistence/postgres.hpp"
 
+#include <algorithm>
 #include <array>
 #include <charconv>
 #include <cmath>
@@ -40,6 +41,19 @@ double amount(pqxx::work& tx, const pqxx::field& field) {
 }
 
 std::int64_t milliseconds(Timestamp time) { return time.value().time_since_epoch().count(); }
+int sessionDays(Date date) {
+    return static_cast<int>(std::chrono::sys_days{date.value()}.time_since_epoch().count());
+}
+Date sessionDate(int days) {
+    const std::chrono::year_month_day value{std::chrono::sys_days{std::chrono::days{days}}};
+    const auto result =
+        Date::create(int(value.year()), unsigned(value.month()), unsigned(value.day()));
+    if (!result) invalid();
+    return *result;
+}
+std::optional<std::string> returnDecimal(std::optional<double> value) {
+    return value ? std::optional<std::string>{decimal(*value)} : std::nullopt;
+}
 Timestamp timestamp(const pqxx::field& field) {
     return Timestamp{Timestamp::Value{std::chrono::milliseconds{field.as<std::int64_t>()}}};
 }
@@ -162,6 +176,74 @@ struct PostgresUnitOfWork::Impl {
         if (!result) invalid();
         return *result;
     }
+    Portfolio atClose(const Portfolio& all, Timestamp close) {
+        std::vector<Transaction> prefix;
+        for (const auto& event : all.transactionHistory()) {
+            if (event.timestamp() > close) break;
+            prefix.push_back(event);
+        }
+        auto result = Portfolio::replay(all.id(), all.startingCash(), prefix);
+        if (!result) invalid();
+        return *result;
+    }
+    // Recompute from audited marks and ledger; never trust stored financial totals.
+    // Generated SQL total_value is exact decimal cash+market_value. The domain
+    // recomputes binary total from the canonical components, avoiding a false
+    // precision rejection when a decimal sum has a different double rendering.
+    std::vector<DailyValuation> valuations(const Portfolio& all) {
+        const auto rows = tx.exec(R"SQL(
+            SELECT session_date-DATE '1970-01-01',
+                (extract(epoch FROM as_of)*1000)::bigint, ledger_sequence,
+                cash,market_value,daily_return,cumulative_return,
+                (extract(epoch FROM previous_as_of)*1000)::bigint
+            FROM portfolio_snapshots WHERE portfolio_id=$1 AND session_date IS NOT NULL
+            ORDER BY session_date
+        )SQL",
+                                  pqxx::params{all.id().value()});
+        std::vector<DailyValuation> result;
+        for (const auto& row : rows) {
+            const auto date = sessionDate(row[0].as<int>());
+            const auto close = timestamp(row[1]);
+            const auto stored_marks = tx.exec(R"SQL(
+                SELECT symbol,close FROM daily_valuation_marks
+                WHERE portfolio_id=$1 AND as_of=TIMESTAMPTZ 'epoch'
+                    + ($2::bigint/86400000)::integer*INTERVAL '1 day'
+                    + ($2::bigint%86400000)::integer*INTERVAL '1 millisecond'
+                ORDER BY symbol COLLATE "C"
+            )SQL",
+                                              pqxx::params{all.id().value(), milliseconds(close)});
+            std::vector<PriceBar> bars;
+            for (const auto& mark : stored_marks) {
+                const auto symbol = Symbol::create(mark[0].as<std::string>());
+                const auto price = Price::create(amount(tx, mark[1]));
+                if (!symbol || !price) invalid();
+                bars.push_back(PriceBar::create(*symbol, date, *price, *price, *price, *price,
+                                                Quantity::create(0).value())
+                                   .value());
+            }
+            const auto state = atClose(all, close);
+            auto value = DailyValuation::calculate(state.snapshot(), date, close, bars,
+                                                   result.empty() ? nullptr : &result.back());
+            const auto sequence = row[2].is_null() ? 0 : row[2].as<std::int64_t>();
+            const auto matchesReturn = [&](const pqxx::field& field,
+                                           std::optional<double> expected) {
+                return expected ? !field.is_null() && amount(tx, field) == *expected
+                                : field.is_null();
+            };
+            if (sequence < 0 || static_cast<std::uint64_t>(sequence) != value.ledgerSequence() ||
+                amount(tx, row[3]) != value.cash().value() ||
+                amount(tx, row[4]) != value.positionValue().value() ||
+                !matchesReturn(row[5], value.dailyReturn()) ||
+                !matchesReturn(row[6], value.cumulativeReturn()) ||
+                (value.previousAsOf()
+                     ? row[7].is_null() || timestamp(row[7]) != *value.previousAsOf()
+                     : !row[7].is_null()) ||
+                bars.size() != value.marks().size())
+                invalid();
+            result.push_back(value);
+        }
+        return result;
+    }
 };
 
 PostgresUnitOfWork::PostgresUnitOfWork(const std::string& connection) try
@@ -230,6 +312,16 @@ void PostgresUnitOfWork::append(const Order& request, const Transaction& event) 
             invalid();
         const auto rows = impl_->lock(event.portfolio_id());
         if (rows.empty()) throw PersistenceError("Portfolio not found");
+        const auto finalized = impl_->tx.exec(
+            R"SQL(
+            SELECT 1 FROM portfolio_snapshots WHERE portfolio_id=$1 AND session_date IS NOT NULL
+            AND as_of >= TIMESTAMPTZ 'epoch'
+                + ($2::bigint/86400000)::integer*INTERVAL '1 day'
+                + ($2::bigint%86400000)::integer*INTERVAL '1 millisecond' LIMIT 1
+        )SQL",
+            pqxx::params{event.portfolio_id().value(), milliseconds(event.timestamp())});
+        if (!finalized.empty())
+            throw PersistenceError("Trade would invalidate a completed valuation");
         auto state = impl_->replay(event.portfolio_id(), rows[0]);
         if (!state.applyTransaction(event)) invalid();
         const auto last = impl_->tx
@@ -368,6 +460,106 @@ MarketPriceRepository::IngestionCounts PostgresUnitOfWork::storeDailyBars(
             ++counts.unchanged;
         }
         return counts;
+    });
+}
+}  // namespace pql::persistence
+
+namespace pql::persistence {
+std::optional<DailyValuation> PostgresUnitOfWork::dailyValuation(PortfolioId id, Date session) {
+    return impl_->run([&]() -> std::optional<DailyValuation> {
+        const auto seed = impl_->lock(id);
+        if (seed.empty()) throw PersistenceError("Portfolio not found");
+        const auto all = impl_->replay(id, seed[0]);
+        const auto values = impl_->valuations(all);
+        for (const auto& value : values)
+            if (value.session() == session) return value;
+        return std::nullopt;
+    });
+}
+
+DailyValuation PostgresUnitOfWork::valueDaily(PortfolioId id, Date session, Timestamp close,
+                                              const std::string& source,
+                                              const std::vector<PriceBar>& bars,
+                                              std::optional<Date> previous_session) {
+    return impl_->run([&] {
+        textValue(source);
+        if (source.find_first_not_of(" \t\r\n\f\v") == std::string::npos)
+            throw PersistenceError("Closing-price source is required");
+        const auto seed = impl_->lock(id);
+        if (seed.empty()) throw PersistenceError("Portfolio not found");
+        const auto all = impl_->replay(id, seed[0]);
+        const auto values = impl_->valuations(all);
+        const DailyValuation* previous = nullptr;
+        const DailyValuation* existing = nullptr;
+        for (const auto& value : values) {
+            if (value.session() < session) previous = &value;
+            if (value.session() == session) existing = &value;
+        }
+        if ((previous && (!previous_session || *previous_session != previous->session())) ||
+            (!previous && previous_session)) {
+            throw PersistenceError("Missing or inconsistent preceding session valuation");
+        }
+        if (!existing && !values.empty() && session <= values.back().session())
+            throw PersistenceError("Historical valuation insertion requires an explicit rebuild");
+        const auto state = impl_->atClose(all, close);
+        const auto value =
+            DailyValuation::calculate(state.snapshot(), session, close, bars, previous);
+        if (existing) {
+            const auto saved_source =
+                impl_->tx
+                    .exec(
+                        "SELECT price_source FROM portfolio_snapshots WHERE portfolio_id=$1 "
+                        "AND session_date=DATE '1970-01-01'+$2::integer",
+                        pqxx::params{id.value(), sessionDays(session)})[0][0]
+                    .as<std::string>();
+            bool same_marks = existing->marks().size() == value.marks().size();
+            for (std::size_t i = 0; same_marks && i < value.marks().size(); ++i) {
+                same_marks = existing->marks()[i].symbol == value.marks()[i].symbol &&
+                             existing->marks()[i].price == value.marks()[i].price;
+            }
+            if (existing->asOf() != value.asOf() || saved_source != source || !same_marks ||
+                existing->cash() != value.cash() ||
+                existing->positionValue() != value.positionValue() ||
+                existing->dailyReturn() != value.dailyReturn() ||
+                existing->cumulativeReturn() != value.cumulativeReturn() ||
+                existing->ledgerSequence() != value.ledgerSequence())
+                throw PersistenceError("Conflicting daily valuation revision");
+            return value;
+        }
+        if (value.ledgerSequence() >
+            static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max()))
+            invalid();
+        const auto sequence =
+            value.ledgerSequence() == 0
+                ? std::optional<std::int64_t>{}
+                : std::optional<std::int64_t>{static_cast<std::int64_t>(value.ledgerSequence())};
+        const auto previous_ms =
+            value.previousAsOf() ? std::optional<std::int64_t>{milliseconds(*value.previousAsOf())}
+                                 : std::nullopt;
+        impl_->tx.exec(
+            R"SQL(
+            INSERT INTO portfolio_snapshots(portfolio_id,as_of,ledger_sequence,cash,market_value,
+                session_date,price_source,daily_return,cumulative_return,previous_as_of)
+            VALUES($1,TIMESTAMPTZ 'epoch' + ($2::bigint/86400000)::integer*INTERVAL '1 day'
+                + ($2::bigint%86400000)::integer*INTERVAL '1 millisecond', $3,$4,$5,
+                DATE '1970-01-01'+$6::integer,$7,$8,$9,
+                TIMESTAMPTZ 'epoch' + ($10::bigint/86400000)::integer*INTERVAL '1 day'
+                + ($10::bigint%86400000)::integer*INTERVAL '1 millisecond')
+        )SQL",
+            pqxx::params{id.value(), milliseconds(close), sequence, decimal(value.cash().value()),
+                         decimal(value.positionValue().value()), sessionDays(session), source,
+                         returnDecimal(value.dailyReturn()),
+                         returnDecimal(value.cumulativeReturn()), previous_ms});
+        for (const auto& mark : value.marks()) {
+            impl_->tx.exec(R"SQL(
+                INSERT INTO daily_valuation_marks(portfolio_id,as_of,symbol,close)
+                VALUES($1,TIMESTAMPTZ 'epoch' + ($2::bigint/86400000)::integer*INTERVAL '1 day'
+                    + ($2::bigint%86400000)::integer*INTERVAL '1 millisecond',$3,$4)
+            )SQL",
+                           pqxx::params{id.value(), milliseconds(close), mark.symbol.value(),
+                                        decimal(mark.price.value())});
+        }
+        return value;
     });
 }
 }  // namespace pql::persistence

@@ -12,7 +12,8 @@ namespace pql::persistence {
 // poisons the whole unit, even if the caller catches the exception.
 class PostgresUnitOfWork final : public TransactionRepository,
                                  public MarketPriceRepository,
-                                 public PortfolioRepository {
+                                 public PortfolioRepository,
+                                 public ValuationRepository {
    public:
     // Empty connection string uses standard libpq PG* environment variables.
     explicit PostgresUnitOfWork(const std::string& connection = "");
@@ -34,6 +35,12 @@ class PostgresUnitOfWork final : public TransactionRepository,
                                               Money starting_cash) override;
     [[nodiscard]] std::optional<StoredPortfolio> portfolio(PortfolioId id) override;
     void renamePortfolio(PortfolioId id, const std::string& name) override;
+    [[nodiscard]] DailyValuation valueDaily(PortfolioId id, Date session, Timestamp close,
+                                            const std::string& source,
+                                            const std::vector<PriceBar>& bars,
+                                            std::optional<Date> previous_session) override;
+    [[nodiscard]] std::optional<DailyValuation> dailyValuation(PortfolioId id,
+                                                               Date session) override;
 
    private:
     struct Impl;
