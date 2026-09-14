@@ -1,21 +1,10 @@
 #include "analytics/daily_valuation.hpp"
 
 #include <algorithm>
-#include <cmath>
+
+#include "analytics/returns.hpp"
 
 namespace pql {
-namespace {
-std::optional<double> simpleReturn(Money current, Money base) {
-    if (base.value() == 0.0) return std::nullopt;
-    // Subtraction before division retains small changes better than ratio - 1.
-    const double result = (current.value() - base.value()) / base.value();
-    if (!std::isfinite(result) || result < -1.0 || (current != base && result == 0.0) ||
-        (current.value() > 0.0 && result == -1.0)) {
-        throw ValuationError("Unrepresentable portfolio return");
-    }
-    return result;
-}
-}  // namespace
 
 DailyValuation DailyValuation::calculate(const PortfolioSnapshot& state, Date session,
                                          Timestamp close, const std::vector<PriceBar>& bars,
@@ -58,10 +47,14 @@ DailyValuation DailyValuation::calculate(const PortfolioSnapshot& state, Date se
     DailyValuation result{state.id(),          session,    close, state.startingCash(),
                           state.cashBalance(), *positions, *total};
     result.ledger_sequence_ = history.size();
-    result.cumulative_return_ = simpleReturn(*total, state.startingCash());
-    if (previous) {
-        result.previous_as_of_ = previous->asOf();
-        result.daily_return_ = simpleReturn(*total, previous->totalValue());
+    try {
+        result.cumulative_return_ = pql::cumulativeReturn(*total, state.startingCash());
+        if (previous) {
+            result.previous_as_of_ = previous->asOf();
+            result.daily_return_ = pql::dailyReturn(*total, previous->totalValue());
+        }
+    } catch (const ReturnError& error) {
+        throw ValuationError(error.what());
     }
     // Retain only prices actually used; input ordering does not affect provenance.
     for (const auto& position : state.positions()) {

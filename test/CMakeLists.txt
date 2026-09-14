@@ -101,6 +101,10 @@ add_executable(pql_historical_replay_tests test_historical_replay.cpp)
 target_link_libraries(pql_historical_replay_tests PRIVATE pql_simulation gtest_main)
 add_test(NAME HistoricalReplayTest COMMAND pql_historical_replay_tests)
 
+add_executable(pql_returns_tests test_returns.cpp)
+target_link_libraries(pql_returns_tests PRIVATE pql_domain gtest_main)
+add_test(NAME ReturnsTest COMMAND pql_returns_tests)
+
 if(PQL_BUILD_POSTGRES_TESTS)
     add_executable(pql_postgres_tests test_postgres.cpp test_daily_valuation_postgres.cpp)
     target_link_libraries(pql_postgres_tests PRIVATE pql_persistence gtest_main libpqxx::pqxx)
