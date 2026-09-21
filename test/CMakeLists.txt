@@ -109,6 +109,10 @@ add_executable(pql_drawdown_tests test_drawdown.cpp)
 target_link_libraries(pql_drawdown_tests PRIVATE pql_domain gtest_main)
 add_test(NAME DrawdownTest COMMAND pql_drawdown_tests)
 
+add_executable(pql_volatility_tests test_volatility.cpp)
+target_link_libraries(pql_volatility_tests PRIVATE pql_domain gtest_main)
+add_test(NAME VolatilityTest COMMAND pql_volatility_tests)
+
 if(PQL_BUILD_POSTGRES_TESTS)
     add_executable(pql_postgres_tests test_postgres.cpp test_daily_valuation_postgres.cpp)
     target_link_libraries(pql_postgres_tests PRIVATE pql_persistence gtest_main libpqxx::pqxx)
