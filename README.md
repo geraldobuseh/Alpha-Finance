@@ -1,4 +1,4 @@
-# Personal Quant Lab
+# Alpha Finance - A Personal Quant Lab
 
 A C++20 financial analysis system for testing investment edge through disciplined experimentation.
 
