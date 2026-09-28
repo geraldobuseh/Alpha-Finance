@@ -35,6 +35,20 @@ std::optional<double> cumulativeReturn(Money current, Money starting) {
     return simpleReturn(current, starting);
 }
 
+double excess_return(double strategy_return, double spy_return) {
+    if (!std::isfinite(strategy_return) || !std::isfinite(spy_return) || strategy_return < -1.0 ||
+        spy_return < -1.0) {
+        throw ReturnError("Expected finite strategy and SPY simple returns at least -1");
+    }
+    const double result = strategy_return - spy_return;
+    if (!std::isfinite(result) || (strategy_return != spy_return && result == 0.0) ||
+        (spy_return != 0.0 && result == strategy_return) ||
+        (strategy_return != 0.0 && result == -spy_return)) {
+        throw ReturnError("Unrepresentable excess return");
+    }
+    return result == 0.0 ? 0.0 : result;
+}
+
 std::optional<double> annualizedReturn(Money current, Money starting, std::chrono::days elapsed) {
     validateValues(current, starting);
     if (elapsed.count() <= 0) throw ReturnError("Annualization requires positive elapsed days");

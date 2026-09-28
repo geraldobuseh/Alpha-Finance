@@ -117,6 +117,10 @@ add_executable(pql_sharpe_tests test_sharpe.cpp)
 target_link_libraries(pql_sharpe_tests PRIVATE pql_domain gtest_main)
 add_test(NAME SharpeTest COMMAND pql_sharpe_tests)
 
+add_executable(pql_strategy_scorecard_tests test_strategy_scorecard.cpp)
+target_link_libraries(pql_strategy_scorecard_tests PRIVATE pql_domain gtest_main)
+add_test(NAME StrategyScorecardTest COMMAND pql_strategy_scorecard_tests)
+
 if(PQL_BUILD_POSTGRES_TESTS)
     add_executable(pql_postgres_tests test_postgres.cpp test_daily_valuation_postgres.cpp)
     target_link_libraries(pql_postgres_tests PRIVATE pql_persistence gtest_main libpqxx::pqxx)

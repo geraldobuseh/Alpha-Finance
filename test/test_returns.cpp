@@ -115,4 +115,43 @@ TEST(Returns, SubnormalGrossRatioUsesEndpointLogarithms) {
     EXPECT_NEAR(*annualizedReturn(money(tiny), money(1.5), std::chrono::days{36500}), expected,
                 1e-15);
 }
+TEST(Returns, ExcessReturnMeasuresPercentagePointDifferenceAgainstSpy) {
+    EXPECT_NEAR(excess_return(0.12, 0.08), 0.04, 1e-15);
+    EXPECT_NEAR(excess_return(0.05, 0.10), -0.05, 1e-15);
+    EXPECT_DOUBLE_EQ(excess_return(0.12, 0.12), 0.0);
+    EXPECT_NEAR(excess_return(-0.10, -0.20), 0.10, 1e-15);
+    const auto strategy = cumulativeReturn(money(1120), money(1000));
+    const auto spy = cumulativeReturn(money(1080), money(1000));
+    ASSERT_TRUE(strategy);
+    ASSERT_TRUE(spy);
+    EXPECT_NEAR(excess_return(*strategy, *spy), 0.04, 1e-15);
+}
+
+TEST(Returns, ExcessReturnIsNotBoundedLikePortfolioReturn) {
+    EXPECT_DOUBLE_EQ(excess_return(-1.0, 1.0), -2.0);
+    EXPECT_DOUBLE_EQ(excess_return(1.0, -1.0), 2.0);
+    EXPECT_FALSE(std::signbit(excess_return(-0.0, 0.0)));
+}
+
+TEST(Returns, ExcessReturnRejectsInvalidInputs) {
+    for (const double invalid :
+         {std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::infinity(),
+          -std::numeric_limits<double>::infinity(), std::nextafter(-1.0, -2.0)}) {
+        EXPECT_THROW((void)excess_return(invalid, 0.1), ReturnError);
+        EXPECT_THROW((void)excess_return(0.1, invalid), ReturnError);
+        EXPECT_THROW((void)excess_return(invalid, invalid), ReturnError);
+    }
+}
+
+TEST(Returns, ExcessReturnPreservesSmallDifferencesAndRejectsLostOperands) {
+    const double next = std::nextafter(0.1, 1.0);
+    EXPECT_DOUBLE_EQ(excess_return(next, 0.1), next - 0.1);
+    EXPECT_DOUBLE_EQ(excess_return(next, 0.1), excess_return(next, 0.1));
+    const double big = std::numeric_limits<double>::max();
+    EXPECT_DOUBLE_EQ(excess_return(big, 0.0), big);
+    EXPECT_DOUBLE_EQ(excess_return(0.0, big), -big);
+    EXPECT_THROW((void)excess_return(big, -1.0), ReturnError);
+    EXPECT_THROW((void)excess_return(-1.0, big), ReturnError);
+    EXPECT_THROW((void)excess_return(0.1, std::numeric_limits<double>::denorm_min()), ReturnError);
+}
 }  // namespace
