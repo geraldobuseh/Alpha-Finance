@@ -179,6 +179,10 @@ This ticket (PQL-002) provides the foundation for all domain code in later ticke
 
 ## Status
 
+The [deterministic backtest engine](docs/backtest-engine.md) runs historical
+sessions through strategy proposals, simulated execution, and ledger-backed daily
+snapshots (PQL-032).
+
 The [Alpha Vantage integration](docs/real-market-data.md) ingests daily OHLCV for
 eight supported symbols with idempotent storage, bounded retries and JSON results (PQL-014).
 

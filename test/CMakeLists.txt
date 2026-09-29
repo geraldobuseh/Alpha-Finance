@@ -1,6 +1,5 @@
 # Personal Quant Lab - Test Configuration
 
-# Fetch GoogleTest from GitHub
 include(FetchContent)
 FetchContent_Declare(
     googletest
@@ -8,7 +7,6 @@ FetchContent_Declare(
     DOWNLOAD_EXTRACT_TIMESTAMP true
 )
 
-# For Windows: prevent overriding parent project compiler options
 set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
 
 find_package(GTest 1.14 CONFIG QUIET)
@@ -18,22 +16,15 @@ else()
     FetchContent_MakeAvailable(googletest)
 endif()
 
-# Create test executable
 add_executable(pql_tests test_smoke.cpp)
-
-# Link against GoogleTest
 target_link_libraries(pql_tests PUBLIC gtest_main)
-
-# Set C++ standard
 target_compile_features(pql_tests PRIVATE cxx_std_20)
 
-# Suppress GoogleTest's overly-aggressive warnings (external dependency)
 if(MSVC AND NOT GTest_FOUND)
-    target_compile_options(gtest PUBLIC /wd4251)  # class needs dll-interface
+    target_compile_options(gtest PUBLIC /wd4251)
     target_compile_options(gtest_main PUBLIC /wd4251)
 endif()
 
-# Register test with CTest
 add_test(NAME SmokeTest COMMAND pql_tests)
 
 add_executable(pql_domain_tests test_financial_types.cpp)
@@ -64,7 +55,6 @@ add_executable(pql_fake_market_data_tests test_fake_market_data.cpp)
 target_link_libraries(pql_fake_market_data_tests PRIVATE pql_market_data gtest_main)
 add_test(NAME FakeMarketDataTest COMMAND pql_fake_market_data_tests)
 
-# Interface contract is checked at compile time; no concrete broker or I/O.
 add_executable(pql_broker_tests test_broker.cpp)
 target_link_libraries(pql_broker_tests PRIVATE pql_domain)
 add_test(NAME BrokerContractTest COMMAND pql_broker_tests)
@@ -121,19 +111,27 @@ add_executable(pql_strategy_scorecard_tests test_strategy_scorecard.cpp)
 target_link_libraries(pql_strategy_scorecard_tests PRIVATE pql_domain gtest_main)
 add_test(NAME StrategyScorecardTest COMMAND pql_strategy_scorecard_tests)
 
+add_executable(pql_backtest_engine_tests test_backtest_engine_pql032.cpp)
+target_link_libraries(pql_backtest_engine_tests PRIVATE pql_simulation gtest_main)
+add_test(NAME BacktestEngineTest COMMAND pql_backtest_engine_tests)
+
 if(PQL_BUILD_POSTGRES_TESTS)
     add_executable(pql_postgres_tests test_postgres.cpp test_daily_valuation_postgres.cpp)
     target_link_libraries(pql_postgres_tests PRIVATE pql_persistence gtest_main libpqxx::pqxx)
     add_test(NAME PostgresIntegrationTest COMMAND pql_postgres_tests)
     set_tests_properties(PostgresIntegrationTest PROPERTIES LABELS integration TIMEOUT 60)
 endif()
+
 if(PQL_BUILD_REAL_MARKET_DATA)
     add_executable(pql_alpha_vantage_tests test_alpha_vantage.cpp)
-    target_link_libraries(pql_alpha_vantage_tests PRIVATE pql_alpha_vantage gtest_main nlohmann_json::nlohmann_json)
+    target_link_libraries(pql_alpha_vantage_tests PRIVATE pql_alpha_vantage gtest_main
+                                                        nlohmann_json::nlohmann_json)
     add_test(NAME AlphaVantageTest COMMAND pql_alpha_vantage_tests)
     if(PQL_BUILD_POSTGRES_TESTS)
         add_executable(pql_daily_ingestion_tests test_daily_ingestion.cpp)
-        target_link_libraries(pql_daily_ingestion_tests PRIVATE pql_alpha_vantage pql_persistence gtest_main libpqxx::pqxx nlohmann_json::nlohmann_json)
+        target_link_libraries(pql_daily_ingestion_tests PRIVATE pql_alpha_vantage pql_persistence
+                                                            gtest_main libpqxx::pqxx
+                                                            nlohmann_json::nlohmann_json)
         add_test(NAME DailyIngestionTest COMMAND pql_daily_ingestion_tests)
         set_tests_properties(DailyIngestionTest PROPERTIES LABELS integration TIMEOUT 60)
     endif()
